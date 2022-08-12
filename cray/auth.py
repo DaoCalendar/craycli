@@ -1,27 +1,28 @@
-""" Auth related methods
-
-MIT License
-
-(C) Copyright [2020] Hewlett Packard Enterprise Development LP
-
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-"""
+#
+# MIT License
+#
+# (C) Copyright [2020-2022] Hewlett Packard Enterprise Development LP
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+# OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+# ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+#
+""" Auth related methods. """
+import json
 # pylint: disable=fixme
 ########################################
 # NOTE: This is still very much beta
@@ -31,19 +32,23 @@ OTHER DEALINGS IN THE SOFTWARE.
 # TODO: Switch to browser auth code flow
 ########################################
 import os
-import json
 import warnings
 
 import click
 from oauthlib.oauth2 import LegacyApplicationClient
 from requests_oauthlib import OAuth2Session
 
-from cray.rest import make_url
 from cray.constants import AUTH_DIR_NAME
-from cray.exceptions import UnauthorizedClientError, MissingTokenError, \
-    InvalidGrantError, InsecureRequestWarning, CustomOAuth2Error
-from cray.utils import hostname_to_name, open_atomic
-from cray.echo import echo, LOG_RAW
+from cray.echo import echo
+from cray.echo import LOG_RAW
+from cray.exceptions import CustomOAuth2Error
+from cray.exceptions import InsecureRequestWarning
+from cray.exceptions import InvalidGrantError
+from cray.exceptions import MissingTokenError
+from cray.exceptions import UnauthorizedClientError
+from cray.rest import make_url
+from cray.utils import hostname_to_name
+from cray.utils import open_atomic
 
 
 class Auth(object):  # pylint: disable=too-many-instance-attributes
@@ -92,7 +97,7 @@ class Auth(object):  # pylint: disable=too-many-instance-attributes
         client = LegacyApplicationClient(
             client_id=self.client_id,
             token=token
-            )
+        )
         if token:
             client.parse_request_body_response(json.dumps(token))
 
@@ -104,7 +109,11 @@ class Auth(object):  # pylint: disable=too-many-instance-attributes
             token['client_id'] = self.client_id
         with open_atomic(self._token_path) as token_file:
             json.dump(token, token_file)
-        echo('Saved token: {}'.format(self._token_path), ctx=self.ctx, level=LOG_RAW)
+        echo(
+            'Saved token: {}'.format(self._token_path),
+            ctx=self.ctx,
+            level=LOG_RAW
+            )
 
     def load(self, name=None):
         """ Load token file """
@@ -114,7 +123,11 @@ class Auth(object):  # pylint: disable=too-many-instance-attributes
         if os.path.isfile(self._token_path):
             with open(self._token_path, encoding='utf-8') as token_file:
                 token = json.load(token_file)
-            echo('Loaded token: {}'.format(self._token_path), ctx=self.ctx, level=LOG_RAW)
+            echo(
+                'Loaded token: {}'.format(self._token_path),
+                ctx=self.ctx,
+                level=LOG_RAW
+                )
         if 'client_id' in token:
             self.client_id = token['client_id']
         self.session = self.get_session(token=token)
@@ -129,15 +142,18 @@ class Auth(object):  # pylint: disable=too-many-instance-attributes
         try:
             # TODO Remove when have valid certs
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore",
-                                        category=InsecureRequestWarning)
+                warnings.filterwarnings(
+                    "ignore",
+                    category=InsecureRequestWarning
+                    )
                 opts = {
                     'verify': False  # TODO: Enable
                 }
                 opts.update(self.get_session_opts())
                 opts.update(kwargs)
                 token = self.session.fetch_token(token_url=self.url, **opts)
-        except (MissingTokenError, UnauthorizedClientError, InvalidGrantError) as e:
+        except (
+        MissingTokenError, UnauthorizedClientError, InvalidGrantError) as e:
             echo('AUTH ERROR: {}'.format(e), ctx=self.ctx, level=LOG_RAW)
             raise click.UsageError('Invalid Credentials', ctx=self.ctx)
         except CustomOAuth2Error as e:
@@ -156,12 +172,17 @@ class Auth(object):  # pylint: disable=too-many-instance-attributes
         if rsa_token:
             kwargs['rsa_username'] = self.username
             kwargs['rsa_otp'] = rsa_token
-        token = self.get_token(username=self.username, password=password, **kwargs)
+        token = self.get_token(
+            username=self.username,
+            password=password,
+            **kwargs
+            )
         if token:
             self.save(token)
         if self.session.authorized:
             return 'Success!'
         return 'Credentials failed!'
+
 
 class AuthFile(Auth):
     """ Auth Class for existing token files """
@@ -173,10 +194,18 @@ class AuthFile(Auth):
             with open(token_path, encoding='utf-8') as token_file:
                 token = json.load(token_file)
         except Exception as e:
-            echo('AUTH ERROR: {}'.format(e), ctx=kwargs.get('ctx'), level=LOG_RAW)
-            raise click.UsageError('Unable to open token file, is it valid JSON?')
-        Auth.__init__(self, hostname, path, name=name,
-                      client_id=token.get('client_id'), **kwargs)
+            echo(
+                'AUTH ERROR: {}'.format(e),
+                ctx=kwargs.get('ctx'),
+                level=LOG_RAW
+                )
+            raise click.UsageError(
+                'Unable to open token file, is it valid JSON?'
+                )
+        Auth.__init__(
+            self, hostname, path, name=name,
+            client_id=token.get('client_id'), **kwargs
+            )
 
 
 class AuthUsername(Auth):

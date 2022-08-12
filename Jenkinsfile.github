@@ -1,5 +1,7 @@
 @Library('csm-shared-library') _
 
+def pythonVersion = '3.8'
+def isStable = env.TAG_NAME != null ? true : false
 pipeline {
     agent {
         label "metal-gcp-builder"
@@ -7,76 +9,54 @@ pipeline {
 
     options {
         buildDiscarder(logRotator(numToKeepStr: "10"))
+        disableConcurrentBuilds()
+        timeout(time: 20, unit: 'MINUTES')
         timestamps()
     }
 
     environment {
-        NAME = "craycli"
-        DESCRIPTION = "Cray CLI Tool"
-        IS_STABLE = getBuildIsStable()
-        SPEC_FILE = "craycli.spec"
-        BUILD_METADATA = getRpmRevision(isStable: env.IS_STABLE)
+        GIT_REPO_NAME = getRepoName()
+        VERSION = sh(returnStdout: true, script: "git describe --tags | tr -s '-' '~' | tr -d '^v'").trim()
     }
 
     stages {
-        stage("Prepare") {
-            steps {
-                sh "make DIST=dist-sp2 prepare"
-                sh "make DIST=dist-sp3 prepare"
-            }
-        }
 
-        stage("Build Prep and Build SP2") {
+        stage('Prepare: RPM') {
             agent {
                 docker {
-                    label "metal-gcp-builder"
+                    image "artifactory.algol60.net/csm-docker/stable/csm-docker-sle-python:${pythonVersion}"
                     reuseNode true
-                    image "arti.dev.cray.com/dstbuildenv-docker-master-local/cray-sle15sp2_build_environment:latest"
-                    // Run as root
-                    args "-u root"
                 }
             }
             steps {
-                sh "make DIST=dist-sp2 build_prep"
-                sh "make DIST=dist-sp2 build"
-                sh "make DIST=dist-sp2 post"
+                script {
+                    runLibraryScript("addRpmMetaData.sh", "${NAME}.spec")
+                }
             }
         }
 
-        stage("Build Prep and Build SP3") {
+        stage('Build: RPM') {
             agent {
                 docker {
-                    label "metal-gcp-builder"
                     reuseNode true
-                    image "arti.dev.cray.com/dstbuildenv-docker-master-local/cray-sle15sp3_build_environment:latest"
-                    // Run as root
-                    args "-u root"
+                    image "artifactory.algol60.net/csm-docker/stable/csm-docker-sle-python:${pythonVersion}"
                 }
             }
             steps {
-                sh "make DIST=dist-sp3 build_prep"
-                sh "make DIST=dist-sp3 build"
-                sh "make DIST=dist-sp3 post"
+                sh "make rpm"
             }
         }
 
-        stage('Publish ') {
+        stage('Publish: RPM') {
             steps {
                 sh "sudo chown -R jenkins:jenkins $WORKSPACE/dist*/rpmbuild"
                 script {
-                    publishCsmRpms(os: 'sle-15sp2', component: env.NAME, pattern: "dist-sp2/rpmbuild/RPMS/x86_64/*.rpm", arch: "x86_64", isStable: env.IS_STABLE)
-                    publishCsmRpms(os: 'sle-15sp2', component: env.NAME, pattern: "dist-sp2/rpmbuild/SRPMS/*.rpm", arch: "src", isStable: env.IS_STABLE)
-                    publishCsmRpms(os: 'sle-15sp3', component: env.NAME, pattern: "dist-sp3/rpmbuild/RPMS/x86_64/*.rpm", arch: "x86_64", isStable: env.IS_STABLE)
-                    publishCsmRpms(os: 'sle-15sp3', component: env.NAME, pattern: "dist-sp3/rpmbuild/SRPMS/*.rpm", arch: "src", isStable: env.IS_STABLE)
+                    publishCsmRpms(os: 'sle-15sp2', component: env.GIT_REPO_NAME, pattern: "dist/rpmbuild/RPMS/x86_64/*.rpm", arch: "x86_64", isStable: isStable)
+                    publishCsmRpms(os: 'sle-15sp2', component: env.GIT_REPO_NAME, pattern: "dist/rpmbuild/SRPMS/*.rpm", arch: "src", isStable: isStable)
+                    publishCsmRpms(os: 'sle-15sp3', component: env.GIT_REPO_NAME, pattern: "dist/rpmbuild/RPMS/x86_64/*.rpm", arch: "x86_64", isStable: isStable)
+                    publishCsmRpms(os: 'sle-15sp3', component: env.GIT_REPO_NAME, pattern: "dist/rpmbuild/SRPMS/*.rpm", arch: "src", isStable: isStable)
                 }
             }
-        }
-    }
-
-    post {
-        always {
-            // Own files so jenkins can clean them up later
-            postChownFiles()
         }
     }
 }

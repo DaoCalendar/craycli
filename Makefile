@@ -20,19 +20,17 @@
 #
 # (MIT License)
 
-NAME ?= craycli
-export VERSION ?= $(shell cat .version)-local
+NAME ?= ${GIT_REPO_NAME}
+ifeq ($(VERSION),)
+VERSION := $(shell git describe --tags | tr -s '-' '~' | tr -d '^v')
+endif
 
-SPEC_NAME ?= craycli
-RPM_NAME ?= craycli
-SPEC_FILE ?= ${SPEC_NAME}.spec
-SPEC_VERSION ?= $(shell cat .version)
+SPEC_FILE ?= ${NAME}.spec
 
 DIST ?= dist
-SOURCE_NAME ?= ${RPM_NAME}-${SPEC_VERSION}
+SOURCE_NAME ?= ${NAME}-${VERSION}
 BUILD_DIR ?= $(PWD)/$(DIST)/rpmbuild
 SOURCE_PATH := ${BUILD_DIR}/SOURCES/${SOURCE_NAME}.tar.gz
-BUILD_METADATA ?= "1~development~$(shell git rev-parse --short HEAD)"
 
 build: rpm_package_source rpm_build_source rpm_build
 post: post_build smoke_tests
@@ -49,16 +47,10 @@ rpm_package_source:
 		tar --transform 'flags=r;s,^,/$(SOURCE_NAME)/,' --exclude .git --exclude 'dist*' -cvjf $(SOURCE_PATH) .
 
 rpm_build_source:
-		BUILD_METADATA=$(BUILD_METADATA) rpmbuild -ts $(SOURCE_PATH) --define "_topdir $(BUILD_DIR)"
+		rpmbuild -ts $(SOURCE_PATH) --define "_topdir $(BUILD_DIR)"
 
 rpm_build:
-		BUILD_METADATA=$(BUILD_METADATA) rpmbuild -ba $(SPEC_FILE) --define "_topdir $(BUILD_DIR)"
-
-post_build:
-		./runPostBuild.sh
+		rpmbuild -ba $(SPEC_FILE) --define "_topdir $(BUILD_DIR)"
 
 smoke_tests:
 		./smokeTests.sh
-
-post_publish:
-		./runPostPublish.sh

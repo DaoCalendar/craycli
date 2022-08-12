@@ -1,33 +1,33 @@
-"""
-pals.py - Common functions for launching applications with PALS
-
-MIT License
-
-(C) Copyright [2020] Hewlett Packard Enterprise Development LP
-
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-"""
+#
+# MIT License
+#
+# (C) Copyright [2020-2022] Hewlett Packard Enterprise Development LP
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+# OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+# ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+#
+""" pals.py - Common functions for launching applications with PALS. """
 # pylint: disable=fixme
 import base64
 import errno
 import fcntl
 import json
+import os
 import resource
 import signal
 import socket
@@ -36,19 +36,23 @@ import stat
 import sys
 import threading
 import time
-import os
 import uuid
 
 import click
 import websocket
 from six.moves import urllib
 
-from cray.echo import echo, LOG_INFO, LOG_WARN, LOG_DEBUG, LOG_RAW
+from cray import atp
+from cray import mpir
+from cray.echo import echo
+from cray.echo import LOG_DEBUG
+from cray.echo import LOG_INFO
+from cray.echo import LOG_RAW
+from cray.echo import LOG_WARN
 from cray.errors import BadResponseError
 from cray.rest import request
-from cray.utils import get_hostname, open_atomic
-
-from cray import atp, mpir
+from cray.utils import get_hostname
+from cray.utils import open_atomic
 
 SIGNAL_RECEIVED = 0  # Last signal number received
 PING_INTERVAL = 20  # WebSocket ping interval
@@ -224,7 +228,12 @@ def forward_signals(websock, sig_pipe):
             os.read(sig_pipe, 4096)
 
             # Send it to the app
-            send_rpc(websock, "signal", str(uuid.uuid4()), signum=SIGNAL_RECEIVED)
+            send_rpc(
+                websock,
+                "signal",
+                str(uuid.uuid4()),
+                signum=SIGNAL_RECEIVED
+                )
     except (OSError, websocket.WebSocketException):
         pass
 
@@ -248,7 +257,10 @@ def spawn_threads(websock):
     stdin_thread.daemon = True
     stdin_thread.start()
 
-    signal_thread = threading.Thread(target=forward_signals, args=(websock, sig_read))
+    signal_thread = threading.Thread(
+        target=forward_signals,
+        args=(websock, sig_read)
+        )
     signal_thread.daemon = True
     signal_thread.start()
 
@@ -266,13 +278,17 @@ def monitor_mpir(ctx, apid):
             if not mpir.MPIR_proctable_filled():
                 # Make request to procinfo endpoint
                 with ctx:
-                    resp = request("GET", "apis/pals/v1/apps/" + apid + "/procinfo")
+                    resp = request(
+                        "GET",
+                        "apis/pals/v1/apps/" + apid + "/procinfo"
+                        )
                 procinfo = resp.json()
                 # Extract MPIR information
                 proctable_elems = []
                 for rank in range(len(procinfo["cmdidxs"])):
                     hostname = procinfo["nodes"][procinfo["placement"][rank]]
-                    executable = procinfo["executables"][procinfo["cmdidxs"][rank]]
+                    executable = procinfo["executables"][
+                        procinfo["cmdidxs"][rank]]
                     pid = procinfo["pids"][rank]
                     proctable_elems.append((hostname, executable, pid))
                 # Call C library to set C MPIR variables
@@ -352,7 +368,10 @@ def write_procinfo_file(result, procinfo_file):
         with open_atomic(procinfo_file) as procinfo_fp:
             json.dump(result, procinfo_fp)
     except (IOError, OSError) as err:
-        echo("Couldn't write %s: %s" % (procinfo_file, str(err)), level=LOG_WARN)
+        echo(
+            "Couldn't write %s: %s" % (procinfo_file, str(err)),
+            level=LOG_WARN
+            )
 
 
 def get_executables(req, transfer):
@@ -412,13 +431,21 @@ class PALSApp(object):
         self.complete = False
         self.started = False
 
-    def launch(self, launchreq, transfer=False, label=False, procinfo_file=None):
+    def launch(
+            self,
+            launchreq,
+            transfer=False,
+            label=False,
+            procinfo_file=None
+            ):
         """ Launch this application, transfer binaries, and run """
         executables = get_executables(launchreq, transfer)
 
         # Launch ATP frontend if enabled
         # returns list of environment variables to set for job
-        (atp_frontend_handle, atp_envlist) = atp.launch_atp_frontend(executables)
+        (atp_frontend_handle, atp_envlist) = atp.launch_atp_frontend(
+            executables
+            )
         if atp_envlist:
             launchreq["environment"] += atp_envlist
 
@@ -464,7 +491,10 @@ class PALSApp(object):
         """ Transfer a file to application compute nodes """
         try:
             mode = stat.S_IMODE(os.stat(executable).st_mode)
-            params = {"mode": "0%o" % mode, "name": os.path.basename(executable)}
+            params = {
+                "mode": "0%o" % mode,
+                "name": os.path.basename(executable)
+            }
             headers = {"Content-Type": "application/octet-stream"}
             with open(executable, "rb") as a_execfile:
                 resp = request(
@@ -477,7 +507,9 @@ class PALSApp(object):
                 path = resp.json().get("path")
                 echo("Transferred executable to %s" % path, level=LOG_DEBUG)
         except (OSError, IOError) as err:
-            raise click.ClickException("Couldn't transfer binary: %s" % str(err))
+            raise click.ClickException(
+                "Couldn't transfer binary: %s" % str(err)
+                )
 
     def handle_rpc(self, websock, rpc, label=False, procinfo_file=None):
         """ Handle a received RPC. Return True if complete. """
@@ -563,7 +595,9 @@ class PALSApp(object):
 
             except websocket.WebSocketException as err:
                 echo(
-                    "Lost application connection (%s), reconnecting" % str(err),
+                    "Lost application connection (%s), reconnecting" % str(
+                        err
+                        ),
                     level=LOG_WARN,
                 )
                 websock.close()
@@ -571,14 +605,17 @@ class PALSApp(object):
             except socket.error as err:  # pylint: disable=no-member
                 if err.errno != errno.EINTR:
                     echo(
-                        "Lost application connection (%s), reconnecting" % str(err),
+                        "Lost application connection (%s), reconnecting" % str(
+                            err
+                            ),
                         level=LOG_WARN,
                     )
                     websock.close()
                     connected = False
             except ValueError as err:
                 echo(
-                    "Error decoding application message: %s" % str(err), level=LOG_WARN
+                    "Error decoding application message: %s" % str(err),
+                    level=LOG_WARN
                 )
 
         # Clean up after ourselves

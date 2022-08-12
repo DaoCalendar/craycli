@@ -173,8 +173,7 @@ def tests(session):
     """
     # Install all test dependencies, then install this package in-place.
     path = 'tests'
-    session.install('-r', 'requirements-test.txt')
-    session.install('-e', '.')
+    session.install('.[test]')
 
     if session.posargs:
         path = session.posargs[0]
@@ -211,8 +210,7 @@ def lint(session):
         run_cmd_tests.append('--disable=import-error')
         run_cmd_tests.append('--disable=fixme')
 
-    session.install('-r', 'requirements-lint.txt')
-    session.install('.')
+    session.install('.[lint]')
     session.run(*run_cmd_code)
     session.run(*run_cmd_tests)
 
@@ -221,8 +219,7 @@ def lint(session):
 def docs(session):
     """Run sphinx.
     """
-    session.install('-r', 'requirements-docs.txt')
-    session.install('.')
+    session.install('.[docs]')
     session.chdir('docs')
     session.run('make', 'clean', **external)
     session.run('make', 'html', **external)

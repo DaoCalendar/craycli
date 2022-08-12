@@ -1,0 +1,6 @@
+[build-system]
+requires = [
+    "pyinstaller",
+    "setuptools",
+    "wheel",
+]
